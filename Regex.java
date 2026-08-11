@@ -1,21 +1,8 @@
+import java.util.Set;
+
 sealed interface RegEx permits Literal, Concat, Alternation, Repetition, Empty, CharClass {
 
     <R> R accept(RegExVisitor<R> visitor);
-}
-
-interface RegExVisitor<R> {
-
-    R visit(Literal node);
-
-    R visit(Concat node);
-
-    R visit(Alternation node);
-
-    R visit(Repetition node);
-
-    R visit(Empty node);
-
-    R visit(CharClass node);
 }
 
 record Literal(char value) implements RegEx {

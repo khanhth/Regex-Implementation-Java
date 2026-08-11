@@ -1,3 +1,6 @@
+import java.util.HashSet;
+import java.util.Set;
+
 class RegExParser {
 
     private final String input;
@@ -22,6 +25,8 @@ class RegExParser {
 
     private RegEx parseSequence() {
         RegEx left = parseFactor();
+        // TODO: @ktr to check whether the following condition is sufficient
+        // E.G. for handling the closing square bracket ']' and other edge cases. The current implementation may not fully account for all valid regex structures, especially in complex nested scenarios.
         if (pos < input.length() && peek() != '|' && peek() != ')' && !(left instanceof Empty)) {
             RegEx right = parseSequence();
             return new Concat(left, right);
@@ -52,6 +57,7 @@ class RegExParser {
         }
 
         // 1. Handle Escape Sequences (\d, \w, \s, \* etc.)
+        // TODO: @ktr to check whether "\*"" is handled in the codebase, as it seems to be a special case that might not be fully implemented yet.
         if (match('\\')) {
             if (pos >= input.length()) {
                 throw new IllegalArgumentException("Dangling backslash escape at end of pattern");
