@@ -1,6 +1,4 @@
-import java.util.List;
-
-public sealed interface RegEx permits Literal, Concat, Alternation, Repetition, Empty {
+sealed interface RegEx permits Literal, Concat, Alternation, Repetition, Empty, CharClass {
     <R> R accept(RegExVisitor<R> visitor);
 }
 
@@ -10,6 +8,7 @@ interface RegExVisitor<R> {
     R visit(Alternation node);
     R visit(Repetition node);
     R visit(Empty node);
+    R visit(CharClass node);
 }
 
 record Literal(char value) implements RegEx {
@@ -32,3 +31,6 @@ record Empty() implements RegEx {
     public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
 }
 
+record CharClass(Set<Character> characters) implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+}
