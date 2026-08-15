@@ -11,4 +11,6 @@ interface RegExVisitor<R> {
     R visit(Empty node);
 
     R visit(CharClass node);
+
+    R visit(Null node);
 }

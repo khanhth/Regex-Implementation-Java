@@ -17,29 +17,21 @@
 // 4. RUNNER (MAIN EXECUTION)
 // ==========================================
 public class RegExRunner {
+    public static void test(String pattern, String text) {
+        RegEx ast = RegExParser.parse(pattern);
+        boolean result = RegExMatcher.matches(ast, text);
+        System.out.printf("Regex: /%-10s/ | Text: %-8s | Match Result: %s\n", pattern, "\"" + text + "\"", result ? "✅ MATCH" : "❌ FAIL");
+    }
 
     public static void main(String[] args) {
-        // Array of unique patterns to demonstrate execution pathways
-        String[] testPatterns = {
-            "a|b",
-            "\\d+-[a-z]*",
-            "(\\*|a)?",
-            "*invalid" // This will trigger our syntax error guard!
-        };
+        System.out.println("Executing evaluation test paths:");
+        System.out.println("--------------------------------------------------");
 
-        RegExPrinter printer = new RegExPrinter();
-
-        for (String regexPattern : testPatterns) {
-            System.out.println("----------------------------------------");
-            System.out.println("Parsing regex pattern: " + regexPattern);
-            try {
-                RegEx ast = RegExParser.parse(regexPattern);
-                String astStructure = ast.accept(printer);
-                System.out.println("Generated AST structure visualization:");
-                System.out.println(astStructure);
-            } catch (IllegalArgumentException e) {
-                System.out.println("Parser Syntax Error: " + e.getMessage());
-            }
-        }
+        test("a|b", "a");         // True
+        test("a|b", "c");         // False
+        test("a*", "");           // True (Zero repetitions)
+        test("[a-z]+-\\d*", "id-99"); // True (Matches character range + digits)
+        test("[a-z]+-\\d*", "ID-99"); // False (Uppercase fails bracket range)
+        test("hello\\!", "hello!");   // True (Escaped literal verification)
     }
 }

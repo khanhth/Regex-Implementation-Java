@@ -1,0 +1,214 @@
+import java.util.HashSet;
+import java.util.Set;
+import java.util.TreeSet;
+
+// ==========================================
+// 1. ABSTRACT SYNTAX TREE (AST) DEFINITION
+// ==========================================
+sealed interface RegEx permits Literal, Concat, Alternation, Repetition, Empty, CharClass, Null {
+    <R> R accept(RegExVisitor<R> visitor);
+    boolean isNullable();
+    RegEx derive(char c);
+}
+
+interface RegExVisitor<R> {
+    R visit(Literal node);
+    R visit(Concat node);
+    R visit(Alternation node);
+    R visit(Repetition node);
+    R visit(Empty node);
+    R visit(CharClass node);
+    R visit(Null node);
+}
+
+record Null() implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return false; }
+    public RegEx derive(char c) { return this; }
+}
+
+record Empty() implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return true; }
+    public RegEx derive(char c) { return new Null(); }
+}
+
+record Literal(char value) implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return false; }
+    public RegEx derive(char c) { return (this.value == c) ? new Empty() : new Null(); }
+}
+
+record CharClass(Set<Character> characters) implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return false; }
+    public RegEx derive(char c) { return characters.contains(c) ? new Empty() : new Null(); }
+}
+
+record Alternation(RegEx left, RegEx right) implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return left.isNullable() || right.isNullable(); }
+    public RegEx derive(char c) { return new Alternation(left.derive(c), right.derive(c)); }
+}
+
+record Concat(RegEx left, RegEx right) implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return left.isNullable() && right.isNullable(); }
+    public RegEx derive(char c) {
+        RegEx derivedLeft = new Concat(left.derive(c), right);
+        if (left.isNullable()) {
+            return new Alternation(derivedLeft, right.derive(c));
+        }
+        return derivedLeft;
+    }
+}
+
+record Repetition(RegEx expr, int min, int max) implements RegEx {
+    public <R> R accept(RegExVisitor<R> visitor) { return visitor.visit(this); }
+    public boolean isNullable() { return min == 0 || expr.isNullable(); }
+    public RegEx derive(char c) { return new Concat(expr.derive(c), this); }
+}
+
+// ==========================================
+// 2. PARSER IMPLEMENTATION
+// ==========================================
+class RegExParser {
+    private final String input;
+    private int pos = 0;
+
+    public RegExParser(String input) { this.input = input; }
+    public static RegEx parse(String regex) { return new RegExParser(regex).parseExpression(); }
+
+    private RegEx parseExpression() {
+        RegEx left = parseSequence();
+        if (match('|')) { return new Alternation(left, parseExpression()); }
+        return left;
+    }
+
+    private RegEx parseSequence() {
+        RegEx left = parseFactor();
+        if (pos < input.length() && peek() != '|' && peek() != ')' && !(left instanceof Empty)) {
+            return new Concat(left, parseSequence());
+        }
+        return left;
+    }
+
+    private RegEx parseFactor() {
+        RegEx base = parseBase();
+        if (base instanceof Empty) return base;
+        if (match('*')) return new Repetition(base, 0, -1);
+        if (match('+')) return new Repetition(base, 1, -1);
+        if (match('?')) return new Repetition(base, 0, 1);
+        return base;
+    }
+
+    private RegEx parseBase() {
+        if (pos >= input.length()) return new Empty();
+
+        if (match('\\')) {
+            if (pos >= input.length()) throw new IllegalArgumentException("Dangling backslash");
+            char escapedChar = peek(); pos++;
+            return switch (escapedChar) {
+                case 'd' -> new CharClass(createDigitSet());
+                case 'w' -> new CharClass(createWordCharSet());
+                default  -> new Literal(escapedChar);
+            };
+        }
+
+        if (match('(')) {
+            RegEx expr = parseExpression();
+            if (!match(')')) throw new IllegalArgumentException("Missing closing parenthesis ')'");
+            return expr;
+        }
+
+        if (match('[')) {
+            Set<Character> chars = new HashSet<>();
+            while (pos < input.length() && peek() != ']') {
+                char current = peek(); pos++;
+                if (pos < input.length() && peek() == '-' && pos + 1 < input.length() && input.charAt(pos + 1) != ']') {
+                    pos++; char end = input.charAt(pos); pos++;
+                    for (char c = current; c <= end; c++) chars.add(c);
+                } else {
+                    chars.add(current);
+                }
+            }
+            if (!match(']')) throw new IllegalArgumentException("Missing closing bracket ']'");
+            return new CharClass(chars);
+        }
+
+        char c = peek();
+        if (c == '*' || c == '+' || c == '?') throw new IllegalArgumentException("Dangling quantifier '" + c + "'");
+        if (c == ')' || c == '|' || c == ']') return new Empty();
+
+        pos++;
+        return new Literal(c);
+    }
+
+    private char peek() { return input.charAt(pos); }
+    private boolean match(char c) {
+        if (pos < input.length() && input.charAt(pos) == c) { pos++; return true; }
+        return false;
+    }
+
+    private Set<Character> createDigitSet() {
+        Set<Character> digits = new HashSet<>();
+        for (char c = '0'; c <= '9'; c++) digits.add(c);
+        return digits;
+    }
+
+    private Set<Character> createWordCharSet() {
+        Set<Character> wordChars = new HashSet<>();
+        for (char c = 'a'; c <= 'z'; c++) wordChars.add(c);
+        for (char c = 'A'; c <= 'Z'; c++) wordChars.add(c);
+        for (char c = '0'; c <= '9'; c++) wordChars.add(c);
+        wordChars.add('_');
+        return wordChars;
+    }
+}
+
+// ==========================================
+// 3. VISITOR AND MATCHER LOGIC
+// ==========================================
+class RegExPrinter implements RegExVisitor<String> {
+    public String visit(Literal n) { return String.valueOf(n.value()); }
+    public String visit(Concat n) { return "(" + n.left().accept(this) + "" + n.right().accept(this) + ")"; }
+    public String visit(Alternation n) { return "(" + n.left().accept(this) + "|" + n.right().accept(this) + ")"; }
+    public String visit(Repetition n) { return n.expr().accept(this) + (n.max() == -1 ? (n.min() == 0 ? "*" : "+") : "?"); }
+    public String visit(Empty n) { return "ε"; }
+    public String visit(Null n) { return "∅"; }
+    public String visit(CharClass n) { return new TreeSet<>(n.characters()).toString(); }
+}
+
+class RegExMatcher {
+    public static boolean matches(RegEx ast, String text) {
+        RegEx currentAst = ast;
+        for (int i = 0; i < text.length(); i++) {
+            currentAst = currentAst.derive(text.charAt(i));
+            if (currentAst instanceof Null) return false;
+        }
+        return currentAst.isNullable();
+    }
+}
+
+// ==========================================
+// 4. MAIN PROGRAM RUNNER
+// ==========================================
+public class RegExRunner1 {
+    public static void test(String pattern, String text) {
+        RegEx ast = RegExParser.parse(pattern);
+        boolean result = RegExMatcher.matches(ast, text);
+        System.out.printf("Regex: /%-10s/ | Text: %-8s | Match Result: %s\n", pattern, "\"" + text + "\"", result ? "✅ MATCH" : "❌ FAIL");
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Executing evaluation test paths:");
+        System.out.println("--------------------------------------------------");
+
+        test("a|b", "a");         // True
+        test("a|b", "c");         // False
+        test("a*", "");           // True (Zero repetitions)
+        test("[a-z]+-\\d*", "id-99"); // True (Matches character range + digits)
+        test("[a-z]+-\\d*", "ID-99"); // False (Uppercase fails bracket range)
+        test("hello\\!", "hello!");   // True (Escaped literal verification)
+    }
+}
