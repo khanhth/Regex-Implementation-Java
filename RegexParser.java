@@ -46,28 +46,45 @@ class RegExParser {
         Token current = peek();
 
         if (match(Token.Operator.Type.LPAREN)) {
-            RegEx expr = parseExpression();
-            if (!match(Token.Operator.Type.RPAREN))
-                throw new IllegalArgumentException("Missing closing parenthesis ')'");
-            return expr;
+            return parseGroupedExpression();
         }
 
         if (current instanceof Token.Literal lit) {
-            tokenIdx++; // consume token
-            return new Literal(lit.value());
+            return consumeLiteral(lit);
         }
 
         if (current instanceof Token.CharClass cc) {
-            tokenIdx++; // consume token
-            return new CharClass(cc.characters());
+            return consumeCharClass(cc);
         }
 
-        if (current instanceof Token.Operator op && (op.type() == Token.Operator.Type.STAR
-                || op.type() == Token.Operator.Type.PLUS || op.type() == Token.Operator.Type.QUESTION)) {
+        if (isDanglingQuantifier(current)) {
             throw new IllegalArgumentException("Dangling quantifier operator has no preceding element to repeat");
         }
 
         return new Empty();
+    }
+
+    private RegEx parseGroupedExpression() {
+        RegEx expr = parseExpression();
+        if (!match(Token.Operator.Type.RPAREN)) {
+            throw new IllegalArgumentException("Missing closing parenthesis ')'");
+        }
+        return expr;
+    }
+
+    private RegEx consumeLiteral(Token.Literal lit) {
+        tokenIdx++; // consume token
+        return new Literal(lit.value());
+    }
+
+    private RegEx consumeCharClass(Token.CharClass cc) {
+        tokenIdx++; // consume token
+        return new CharClass(cc.characters());
+    }
+
+    private boolean isDanglingQuantifier(Token token) {
+        return token instanceof Token.Operator op && (op.type() == Token.Operator.Type.STAR
+                || op.type() == Token.Operator.Type.PLUS || op.type() == Token.Operator.Type.QUESTION);
     }
 
     private Token peek() {
