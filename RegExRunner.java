@@ -1,3 +1,4 @@
+// AST Interfaces & Derivatives Architecture
 // ==========================================
 // 1. ABSTRACT SYNTAX TREE (AST) DEFINITION
 // ==========================================
@@ -18,20 +19,20 @@
 // ==========================================
 public class RegExRunner {
     public static void test(String pattern, String text) {
-        RegEx ast = RegExParser.parse(pattern);
-        boolean result = RegExMatcher.matches(ast, text);
-        System.out.printf("Regex: /%-10s/ | Text: %-8s | Match Result: %s\n", pattern, "\"" + text + "\"", result ? "✅ MATCH" : "❌ FAIL");
+        try {
+            RegEx ast = RegExParser.parse(pattern);
+            boolean result = RegExMatcher.matches(ast, text);
+            System.out.printf("Regex: /%-10s/ | Text: %-8s | Match Result: %s\n", pattern, "\"" + text + "\"", result ? "✅ MATCH" : "❌ FAIL");
+        } catch (IllegalArgumentException e) {
+            System.out.printf("Regex: /%-10s/ | Text: %-8s | Parser Error: %s\n", pattern, "\"" + text + "\"", e.getMessage());
+        }
     }
 
     public static void main(String[] args) {
-        System.out.println("Executing evaluation test paths:");
-        System.out.println("--------------------------------------------------");
-
-        test("a|b", "a");         // True
-        test("a|b", "c");         // False
-        test("a*", "");           // True (Zero repetitions)
-        test("[a-z]+-\\d*", "id-99"); // True (Matches character range + digits)
-        test("[a-z]+-\\d*", "ID-99"); // False (Uppercase fails bracket range)
-        test("hello\\!", "hello!");   // True (Escaped literal verification)
+        System.out.println("Executing evaluation with dedicated Lexer layer:");
+        System.out.println("------------------------------------------------------------------");
+        test("[a-z]+-\\d+", "abc-123");  // True
+        test("(\\*|a)+", "*a*aa");       // True (Evaluates escaped * correctly)
+        test("*fail", "text");           // Triggers Token syntax boundary error
     }
 }

@@ -3,9 +3,10 @@ class RegExMatcher {
         RegEx currentAst = ast;
         for (int i = 0; i < text.length(); i++) {
             currentAst = currentAst.derive(text.charAt(i));
-            if (currentAst instanceof Null) return false;
+            if (currentAst instanceof Null) {
+                return false;
+            }
         }
         return currentAst.isNullable();
     }
 }
-

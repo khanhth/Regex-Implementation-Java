@@ -1,163 +1,94 @@
-
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 
 class RegExParser {
+    private final List<Token> tokens;
+    private int tokenIdx = 0;
 
-    private final String input;
-    private int pos = 0;
-
-    public RegExParser(String input) {
-        this.input = input;
+    public RegExParser(List<Token> tokens) {
+        this.tokens = tokens;
     }
 
     public static RegEx parse(String regex) {
-        return new RegExParser(regex).parseExpression();
+        List<Token> tokens = new Lexer(regex).tokenize();
+        return new RegExParser(tokens).parseExpression();
     }
 
     private RegEx parseExpression() {
         RegEx left = parseSequence();
-        if (match('|')) {
-            RegEx right = parseExpression();
-            return new Alternation(left, right);
+        if (match(Token.Operator.Type.PIPE)) {
+            return new Alternation(left, parseExpression());
         }
         return left;
     }
 
     private RegEx parseSequence() {
         RegEx left = parseFactor();
-        // TODO: @ktr to check whether the following condition is sufficient
-        // E.G. for handling the closing square bracket ']' and other edge cases. The current implementation may not fully account for all valid regex structures, especially in complex nested scenarios.
-        if (pos < input.length() && peek() != '|' && peek() != ')' && !(left instanceof Empty)) {
-            RegEx right = parseSequence();
-            return new Concat(left, right);
+        if (!isAtBoundary() && !(left instanceof Empty)) {
+            return new Concat(left, parseSequence());
         }
         return left;
     }
 
     private RegEx parseFactor() {
         RegEx base = parseBase();
-        if (base instanceof Empty) {
+        if (base instanceof Empty)
             return base;
-        }
-        if (match('*')) {
+        if (match(Token.Operator.Type.STAR))
             return new Repetition(base, 0, -1);
-        }
-        if (match('+')) {
+        if (match(Token.Operator.Type.PLUS))
             return new Repetition(base, 1, -1);
-        }
-        if (match('?')) {
+        if (match(Token.Operator.Type.QUESTION))
             return new Repetition(base, 0, 1);
-        }
         return base;
     }
 
     private RegEx parseBase() {
-        if (pos >= input.length()) {
-            return new Empty();
-        }
+        Token current = peek();
 
-        // 1. Handle Escape Sequences (\d, \w, \s, \* etc.)
-        // TODO: @ktr to check whether "\*"" is handled in the codebase, as it seems to be a special case that might not be fully implemented yet.
-        if (match('\\')) {
-            if (pos >= input.length()) {
-                throw new IllegalArgumentException("Dangling backslash escape at end of pattern");
-            }
-            char escapedChar = peek();
-            pos++;
-
-            return switch (escapedChar) {
-                case 'd' ->
-                    new CharClass(createDigitSet());
-                case 'w' ->
-                    new CharClass(createWordCharSet());
-                default ->
-                    new Literal(escapedChar); // Treats specialized or standard punctuation as a literal
-            };
-        }
-
-        // 2. Handle Parentheses Groups
-        if (match('(')) {
+        if (match(Token.Operator.Type.LPAREN)) {
             RegEx expr = parseExpression();
-            if (!match(')')) {
+            if (!match(Token.Operator.Type.RPAREN))
                 throw new IllegalArgumentException("Missing closing parenthesis ')'");
-            }
             return expr;
         }
 
-        // 3. Handle Character Classes [a-z0-9]
-        if (match('[')) {
-            Set<Character> chars = new HashSet<>();
-            while (pos < input.length() && peek() != ']') {
-                char current = peek();
-                pos++;
-
-                // Track ranges like a-z
-                if (pos < input.length() && peek() == '-' && pos + 1 < input.length() && input.charAt(pos + 1) != ']') {
-                    pos++; // Consume '-'
-                    char end = input.charAt(pos);
-                    pos++; // Consume range end
-                    for (char c = current; c <= end; c++) {
-                        chars.add(c);
-                    }
-                } else {
-                    chars.add(current);
-                }
-            }
-            if (!match(']')) {
-                throw new IllegalArgumentException("Missing closing bracket ']'");
-            }
-            return new CharClass(chars);
+        if (current instanceof Token.Literal lit) {
+            tokenIdx++; // consume token
+            return new Literal(lit.value());
         }
 
-        // 4. Strict Syntax Error Checking for Dangling Quantifiers
-        char c = peek();
-        if (c == '*' || c == '+' || c == '?') {
-            throw new IllegalArgumentException("Dangling quantifier '" + c + "' has no preceding element to repeat");
+        if (current instanceof Token.CharClass cc) {
+            tokenIdx++; // consume token
+            return new CharClass(cc.characters());
         }
 
-        // 5. Normal Structural Boundaries
-        if (c == ')' || c == '|' || c == ']') {
-            return new Empty();
+        if (current instanceof Token.Operator op && (op.type() == Token.Operator.Type.STAR
+                || op.type() == Token.Operator.Type.PLUS || op.type() == Token.Operator.Type.QUESTION)) {
+            throw new IllegalArgumentException("Dangling quantifier operator has no preceding element to repeat");
         }
 
-        // 6. Standard Literal Characters
-        pos++;
-        return new Literal(c);
+        return new Empty();
     }
 
-    private char peek() {
-        return input.charAt(pos);
+    private Token peek() {
+        return tokens.get(tokenIdx);
     }
 
-    private boolean match(char c) {
-        if (pos < input.length() && input.charAt(pos) == c) {
-            pos++;
+    private boolean match(Token.Operator.Type type) {
+        if (peek() instanceof Token.Operator op && op.type() == type) {
+            tokenIdx++;
             return true;
         }
         return false;
     }
 
-    private Set<Character> createDigitSet() {
-        Set<Character> digits = new HashSet<>();
-        for (char c = '0'; c <= '9'; c++) {
-            digits.add(c);
+    private boolean isAtBoundary() {
+        Token t = peek();
+        if (t instanceof Token.EOF)
+            return true;
+        if (t instanceof Token.Operator op) {
+            return op.type() == Token.Operator.Type.PIPE || op.type() == Token.Operator.Type.RPAREN;
         }
-        return digits;
-    }
-
-    private Set<Character> createWordCharSet() {
-        Set<Character> wordChars = new HashSet<>();
-        for (char c = 'a'; c <= 'z'; c++) {
-            wordChars.add(c);
-        }
-        for (char c = 'A'; c <= 'Z'; c++) {
-            wordChars.add(c);
-        }
-        for (char c = '0'; c <= '9'; c++) {
-            wordChars.add(c);
-        }
-        wordChars.add('_');
-        return wordChars;
+        return false;
     }
 }
